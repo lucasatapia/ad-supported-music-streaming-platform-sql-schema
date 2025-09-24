@@ -1,0 +1,437 @@
+-- ================================================================
+-- Music Streaming Platform Database Schema
+-- Ad-Supported Model with Revenue Sharing
+-- Based on ERD Analysis
+-- ================================================================
+
+-- ================================================================
+-- CORE MUSIC CONTENT TABLES
+-- ================================================================
+
+CREATE TABLE music_labels (
+    label_id INTEGER PRIMARY KEY AUTOINCREMENT,
+    label_name VARCHAR(255) NOT NULL,
+    address TEXT
+);
+
+CREATE TABLE albums (
+    album_id INTEGER PRIMARY KEY AUTOINCREMENT,
+    label_id INTEGER REFERENCES music_labels(label_id),
+    album_title VARCHAR(255) NOT NULL,
+    album_release_date DATE
+);
+
+CREATE TABLE artists (
+    artist_id INTEGER PRIMARY KEY AUTOINCREMENT,
+    artist_name VARCHAR(255) NOT NULL,
+    country VARCHAR(100)
+);
+
+CREATE TABLE songs (
+    song_id INTEGER PRIMARY KEY AUTOINCREMENT,
+    title VARCHAR(255) NOT NULL,
+    song_duration INTEGER, -- in seconds
+    song_release_date DATE,
+    play_count INTEGER DEFAULT 0
+);
+
+CREATE TABLE album_songs (
+    album_id INTEGER REFERENCES albums(album_id),
+    song_id INTEGER REFERENCES songs(song_id),
+    track_number INTEGER,
+    PRIMARY KEY (album_id, song_id)
+);
+
+CREATE TABLE collaborations (
+    collab_id INTEGER PRIMARY KEY AUTOINCREMENT,
+    song_id INTEGER REFERENCES songs(song_id),
+    artist_id INTEGER REFERENCES artists(artist_id)
+);
+
+CREATE TABLE role_type (
+    role_id INTEGER PRIMARY KEY AUTOINCREMENT,
+    role_name VARCHAR(100) NOT NULL -- 'Lead Artist', 'Featured', 'Producer', 'Songwriter'
+);
+
+CREATE TABLE artist_roles (
+    collab_id INTEGER REFERENCES collaborations(collab_id),
+    role_id INTEGER REFERENCES role_type(role_id),
+    credit_percentage DECIMAL(5,2),
+    PRIMARY KEY (collab_id, role_id)
+);
+
+-- ================================================================
+-- MUSIC CLASSIFICATION TABLES
+-- ================================================================
+
+CREATE TABLE genres (
+    genre_id INTEGER PRIMARY KEY AUTOINCREMENT,
+    genre_name VARCHAR(100) NOT NULL
+);
+
+CREATE TABLE moods (
+    mood_id INTEGER PRIMARY KEY AUTOINCREMENT,
+    mood_name VARCHAR(100) NOT NULL
+);
+
+CREATE TABLE song_genres (
+    song_id INTEGER REFERENCES songs(song_id),
+    genre_id INTEGER REFERENCES genres(genre_id),
+    PRIMARY KEY (song_id, genre_id)
+);
+
+CREATE TABLE song_moods (
+    song_id INTEGER REFERENCES songs(song_id),
+    mood_id INTEGER REFERENCES moods(mood_id),
+    PRIMARY KEY (song_id, mood_id)
+);
+
+-- ================================================================
+-- USER MANAGEMENT TABLES
+-- ================================================================
+
+CREATE TABLE app_users (
+    user_id INTEGER PRIMARY KEY AUTOINCREMENT,
+    username VARCHAR(100) UNIQUE NOT NULL,
+    email VARCHAR(255) UNIQUE NOT NULL,
+    registration_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    age INTEGER
+);
+
+CREATE TABLE user_preferences (
+    user_id INTEGER PRIMARY KEY REFERENCES app_users(user_id),
+    genre_id INTEGER REFERENCES genres(genre_id),
+    mood_id INTEGER REFERENCES moods(mood_id),
+    avg_tempo INTEGER,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- ================================================================
+-- ADVERTISING SYSTEM TABLES
+-- ================================================================
+
+CREATE TABLE ad_format (
+    format_id INTEGER PRIMARY KEY AUTOINCREMENT,
+    format_name VARCHAR(100) NOT NULL,
+    format_description TEXT
+);
+
+CREATE TABLE advertisers (
+    advertiser_id INTEGER PRIMARY KEY AUTOINCREMENT,
+    advertiser_name VARCHAR(255) NOT NULL,
+    contact_info TEXT,
+    industry_category VARCHAR(100),
+    billing_info TEXT
+);
+
+CREATE TABLE advertisements (
+    ad_id INTEGER PRIMARY KEY AUTOINCREMENT,
+    format_id INTEGER REFERENCES ad_format(format_id),
+    advertiser_id INTEGER REFERENCES advertisers(advertiser_id),
+    genre_id INTEGER REFERENCES genres(genre_id),
+    mood_id INTEGER REFERENCES moods(mood_id),
+    ad_name VARCHAR(255) NOT NULL,
+    ad_description TEXT,
+    placement VARCHAR(100), -- 'pre-roll', 'mid-roll', 'banner'
+    ad_duration INTEGER, -- in seconds
+    content_url TEXT,
+    start_date DATE,
+    end_date DATE
+);
+
+CREATE TABLE ad_play (
+    ad_play_id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id INTEGER REFERENCES app_users(user_id),
+    ad_id INTEGER REFERENCES advertisements(ad_id),
+    venue_id INTEGER, -- Future expansion for venue-based ads
+    ad_play_count INTEGER DEFAULT 1,
+    ad_timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    personalisation_type VARCHAR(100)
+);
+
+CREATE TABLE interactive_ad_engagement (
+    interaction_id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id INTEGER REFERENCES app_users(user_id),
+    ad_id INTEGER REFERENCES advertisements(ad_id),
+    engagement_type VARCHAR(100), -- 'click', 'skip', 'complete_view', 'share'
+    interaction_time TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    score INTEGER
+);
+
+-- ================================================================
+-- SESSION AND LISTENING MANAGEMENT
+-- ================================================================
+
+CREATE TABLE listening_sessions (
+    session_id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id INTEGER REFERENCES app_users(user_id),
+    ad_play_id INTEGER REFERENCES ad_play(ad_play_id),
+    start_time TIMESTAMP NOT NULL,
+    end_time TIMESTAMP,
+    country_location VARCHAR(100)
+);
+
+CREATE TABLE listening_history (
+    listen_id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id INTEGER REFERENCES app_users(user_id),
+    session_id INTEGER REFERENCES listening_sessions(session_id),
+    song_id INTEGER REFERENCES songs(song_id),
+    listen_timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    is_skipped BOOLEAN DEFAULT FALSE
+);
+
+-- ================================================================
+-- PARTNERSHIP AND REVENUE MANAGEMENT
+-- ================================================================
+
+CREATE TABLE parties (
+    party_id INTEGER PRIMARY KEY AUTOINCREMENT,
+    party_name VARCHAR(255) NOT NULL,
+    party_type VARCHAR(100) -- 'label', 'artist', 'platform', 'advertiser'
+);
+
+CREATE TABLE contracts (
+    contract_id INTEGER PRIMARY KEY AUTOINCREMENT,
+    artist_id INTEGER REFERENCES artists(artist_id),
+    label_id INTEGER REFERENCES music_labels(label_id),
+    start_date DATE NOT NULL,
+    end_date DATE,
+    terms TEXT
+);
+
+CREATE TABLE contract_revenue_shares (
+    revenue_share_id INTEGER PRIMARY KEY AUTOINCREMENT,
+    contract_id INTEGER REFERENCES contracts(contract_id),
+    party_id INTEGER REFERENCES parties(party_id),
+    share_percentage DECIMAL(5,2) NOT NULL
+);
+
+CREATE TABLE revenue_distribution (
+    distribution_id INTEGER PRIMARY KEY AUTOINCREMENT,
+    ad_play_id INTEGER REFERENCES ad_play(ad_play_id),
+    revenue_shares_id INTEGER REFERENCES contract_revenue_shares(revenue_share_id),
+    amount DECIMAL(10,2),
+    distribution_timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE ad_partnerships (
+    partnership_id INTEGER PRIMARY KEY AUTOINCREMENT,
+    advertiser_id INTEGER REFERENCES advertisers(advertiser_id),
+    partnership_name VARCHAR(255),
+    partnership_type VARCHAR(100),
+    partnership_start DATE,
+    partnership_end DATE,
+    app_revenue_share_percentage DECIMAL(5,2)
+);
+
+CREATE TABLE payment (
+    payment_id INTEGER PRIMARY KEY AUTOINCREMENT,
+    distribution_id INTEGER REFERENCES revenue_distribution(distribution_id),
+    amount_paid DECIMAL(10,2),
+    payment_timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    payment_status VARCHAR(50) DEFAULT 'pending'
+);
+
+-- ================================================================
+-- REWARDS SYSTEM
+-- ================================================================
+
+CREATE TABLE reward_source (
+    reward_source_id INTEGER PRIMARY KEY AUTOINCREMENT,
+    rew_source_name VARCHAR(255) NOT NULL
+);
+
+CREATE TABLE ad_free_reward (
+    reward_id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id INTEGER REFERENCES app_users(user_id),
+    reward_source_id INTEGER REFERENCES reward_source(reward_source_id),
+    reward_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE reward_details (
+    reward_detail_id INTEGER PRIMARY KEY AUTOINCREMENT,
+    reward_id INTEGER REFERENCES ad_free_reward(reward_id),
+    minutes_earned INTEGER,
+    minutes_remaining INTEGER,
+    used_minutes INTEGER DEFAULT 0
+);
+
+CREATE TABLE engagement_revenue (
+    engagement_type INTEGER PRIMARY KEY AUTOINCREMENT,
+    revenue_shared DECIMAL(10,2)
+);
+
+-- ================================================================
+-- PERFORMANCE INDEXES
+-- ================================================================
+
+CREATE INDEX idx_songs_play_count ON songs(play_count DESC);
+CREATE INDEX idx_listening_history_user_timestamp ON listening_history(user_id, listen_timestamp DESC);
+CREATE INDEX idx_ad_play_user_timestamp ON ad_play(user_id, ad_timestamp DESC);
+CREATE INDEX idx_advertisements_dates ON advertisements(start_date, end_date);
+CREATE INDEX idx_user_preferences_user ON user_preferences(user_id);
+CREATE INDEX idx_song_genres_lookup ON song_genres(song_id, genre_id);
+CREATE INDEX idx_song_moods_lookup ON song_moods(song_id, mood_id);
+CREATE INDEX idx_collaborations_song ON collaborations(song_id);
+CREATE INDEX idx_collaborations_artist ON collaborations(artist_id);
+
+-- ================================================================
+-- SAMPLE DATA INSERTS
+-- ================================================================
+
+-- Music Labels
+INSERT INTO music_labels (label_name, address) VALUES 
+('Universal Music Group', '2220 Colorado Ave, Santa Monica, CA 90404'),
+('Sony Music Entertainment', '25 Madison Ave, New York, NY 10010'),
+('Warner Music Group', '1633 Broadway, New York, NY 10019');
+
+-- Artists
+INSERT INTO artists (artist_name, country) VALUES 
+('The Midnight', 'USA'),
+('Dua Lipa', 'UK'),
+('Bad Bunny', 'Puerto Rico'),
+('Taylor Swift', 'USA'),
+('Drake', 'Canada');
+
+-- Genres
+INSERT INTO genres (genre_name) VALUES 
+('Pop'),
+('Hip Hop'),
+('Electronic'),
+('Reggaeton'),
+('Synthwave'),
+('R&B'),
+('Rock'),
+('Jazz');
+
+-- Moods
+INSERT INTO moods (mood_name) VALUES 
+('Energetic'),
+('Chill'),
+('Romantic'),
+('Melancholic'),
+('Uplifting'),
+('Focus'),
+('Party'),
+('Relaxing');
+
+-- Albums
+INSERT INTO albums (label_id, album_title, album_release_date) VALUES 
+(1, 'Future Nostalgia', '2020-03-27'),
+(2, 'Un Verano Sin Ti', '2022-05-06'),
+(3, 'Midnights', '2022-10-21'),
+(1, 'Endless Summer', '2021-08-15');
+
+-- Songs
+INSERT INTO songs (title, song_duration, song_release_date, play_count) VALUES 
+('Levitating', 203, '2020-03-27', 1500000),
+('Tití Me Preguntó', 245, '2022-05-06', 890000),
+('Anti-Hero', 200, '2022-10-21', 2100000),
+('Sunset', 320, '2021-08-15', 450000),
+('Gods Plan', 198, '2018-01-19', 1800000);
+
+-- Users
+INSERT INTO app_users (username, email, age) VALUES 
+('musiclover23', 'john@example.com', 25),
+('synthfan', 'sarah@example.com', 19),
+('popqueen', 'maria@example.com', 22),
+('hiphophead', 'mike@example.com', 28);
+
+-- Ad Formats
+INSERT INTO ad_format (format_name, format_description) VALUES 
+('Audio Pre-Roll', '15-30 second audio advertisement before song playback'),
+('Banner Display', 'Visual banner advertisement shown during music playback'),
+('Video Interstitial', 'Full-screen video advertisement between songs'),
+('Sponsored Content', 'Native advertising integrated into playlists');
+
+-- Advertisers
+INSERT INTO advertisers (advertiser_name, contact_info, industry_category) VALUES 
+('Nike', 'advertising@nike.com', 'Sports & Fitness'),
+('Coca-Cola', 'marketing@coca-cola.com', 'Food & Beverage'),
+('Apple', 'ads@apple.com', 'Technology'),
+('Spotify Premium', 'partnerships@spotify.com', 'Entertainment');
+
+-- Sample Advertisements
+INSERT INTO advertisements (format_id, advertiser_id, genre_id, mood_id, ad_name, ad_description, placement, ad_duration, start_date, end_date) VALUES 
+(1, 1, 1, 1, 'Nike Air Max Campaign', 'New Air Max sneakers for active lifestyle', 'pre-roll', 20, '2024-01-01', '2024-03-31'),
+(2, 2, 2, 2, 'Coca-Cola Refresh', 'Stay refreshed with Coca-Cola', 'banner', 0, '2024-02-01', '2024-05-31'),
+(3, 3, 3, 6, 'Apple AirPods Pro', 'Experience music like never before', 'interstitial', 30, '2024-01-15', '2024-04-15');
+
+-- Create sample relationships
+INSERT INTO album_songs (album_id, song_id, track_number) VALUES 
+(1, 1, 1),
+(2, 2, 3),
+(3, 3, 2),
+(4, 4, 1);
+
+INSERT INTO collaborations (song_id, artist_id) VALUES 
+(1, 2),
+(2, 3),
+(3, 4),
+(4, 1),
+(5, 5);
+
+INSERT INTO song_genres (song_id, genre_id) VALUES 
+(1, 1),
+(2, 4),
+(3, 1),
+(4, 5),
+(5, 2);
+
+INSERT INTO song_moods (song_id, mood_id) VALUES 
+(1, 1),
+(2, 1),
+(3, 4),
+(4, 2),
+(5, 5);
+
+-- ================================================================
+-- ANALYTICS VIEWS
+-- ================================================================
+
+-- User listening statistics
+CREATE VIEW user_listening_stats AS
+SELECT 
+    u.user_id,
+    u.username,
+    COUNT(lh.listen_id) as total_listens,
+    COUNT(CASE WHEN lh.is_skipped = 0 THEN 1 END) as completed_listens,
+    COUNT(DISTINCT lh.song_id) as unique_songs_played,
+    COUNT(DISTINCT DATE(lh.listen_timestamp)) as active_days
+FROM app_users u
+LEFT JOIN listening_history lh ON u.user_id = lh.user_id
+GROUP BY u.user_id, u.username;
+
+-- Popular songs with artist information
+CREATE VIEW popular_songs AS
+SELECT 
+    s.song_id,
+    s.title,
+    s.play_count,
+    GROUP_CONCAT(DISTINCT a.artist_name) as artists,
+    GROUP_CONCAT(DISTINCT g.genre_name) as genres
+FROM songs s
+JOIN collaborations c ON s.song_id = c.song_id
+JOIN artists a ON c.artist_id = a.artist_id
+LEFT JOIN song_genres sg ON s.song_id = sg.song_id
+LEFT JOIN genres g ON sg.genre_id = g.genre_id
+GROUP BY s.song_id, s.title, s.play_count
+ORDER BY s.play_count DESC;
+
+-- Ad performance metrics
+CREATE VIEW ad_performance AS
+SELECT 
+    ad.ad_id,
+    ad.ad_name,
+    adv.advertiser_name,
+    COUNT(ap.ad_play_id) as total_plays,
+    COUNT(DISTINCT ap.user_id) as unique_users,
+    AVG(CASE WHEN iae.engagement_type = 'complete_view' THEN 1.0 ELSE 0.0 END) as completion_rate
+FROM advertisements ad
+JOIN advertisers adv ON ad.advertiser_id = adv.advertiser_id
+LEFT JOIN ad_play ap ON ad.ad_id = ap.ad_id
+LEFT JOIN interactive_ad_engagement iae ON ad.ad_id = iae.ad_id
+WHERE ad.start_date <= CURRENT_DATE AND ad.end_date >= CURRENT_DATE
+GROUP BY ad.ad_id, ad.ad_name, adv.advertiser_name;
+
+COMMIT;
